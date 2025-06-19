@@ -22,152 +22,228 @@ void polyvec_reduce(polyvec *r)
 		poly_reduce(r->vec + i);
 }
 
-#if BITS_C1 == 9 || BITS_PK == 9
-static void polyvec_compress9(uint8_t *r, const polyvec *a)
-{
-	int i, j, k;
-	uint16_t t[8];
-	uint16_t cpbytes = ((PARAM_N * 9) >> 3);//the bytes for storing a polynomial in compressed form
-	for (i = 0; i<PARAM_K; i++)
-	{
-		for (j = 0; j<PARAM_N / 8; j++)
-		{
-			for (k = 0; k<8; k++)
-				t[k] = ((((uint32_t)a->vec[i].coeffs[8 * j + k] << 9) + PARAM_Q / 2) / PARAM_Q) & 0x1ff;
+#define LOW_THRESH   1024
+#define MID_THRESH   6144
 
-			r[9 * j + 0] = t[0] & 0xff;
-			r[9 * j + 1] = (t[0] >> 8) | ((t[1] & 0x7f) << 1);
-			r[9 * j + 2] = (t[1] >> 7) | ((t[2] & 0x3f) << 2);
-			r[9 * j + 3] = (t[2] >> 6) | ((t[3] & 0x1f) << 3);
-			r[9 * j + 4] = (t[3] >> 5) | ((t[4] & 0x0f) << 4);
-			r[9 * j + 5] = (t[4] >> 4) | ((t[5] & 0x07) << 5);
-			r[9 * j + 6] = (t[5] >> 3) | ((t[6] & 0x03) << 6);
-			r[9 * j + 7] = (t[6] >> 2) | ((t[7] & 0x01) << 7);
-			r[9 * j + 8] = (t[7] >> 1);
-		}
-		r += cpbytes;
-	}
+// 核心压缩函数 (支持9/10/11位)
+static inline uint16_t adaptive_compress(int16_t coeff, int bits) {
+    uint32_t coeff32 = (uint32_t)(coeff >= 0 ? coeff : coeff + PARAM_Q);
+    const uint32_t max_val = (1u << bits) - 1;
+    
+    // 资源分配比例（基于位宽动态计算）
+    const uint32_t low_range = (max_val * 3) / 10;   // 30%
+    const uint32_t mid_range = (max_val * 5) / 10;   // 50%
+    const uint32_t high_range = max_val - low_range - mid_range;  // 20%
+    
+    // 确定区间（无分支避免侧信道）
+    uint32_t range = 0;
+    if (coeff32 < LOW_THRESH) {
+        range = (coeff32 * low_range + (LOW_THRESH - 1)) / LOW_THRESH;
+    } else if (coeff32 < MID_THRESH) {
+        range = low_range + ((coeff32 - LOW_THRESH) * mid_range + 
+                (MID_THRESH - LOW_THRESH) / 2) / (MID_THRESH - LOW_THRESH);
+    } else {
+        range = low_range + mid_range + 
+               ((coeff32 - MID_THRESH) * high_range + 
+               (PARAM_Q - MID_THRESH) / 2) / (PARAM_Q - MID_THRESH);
+    }
+
+    // 保证不越界
+    return range < max_val ? (uint16_t)range : max_val;
+}
+
+// 核心解压函数 (匹配自适应压缩)
+static inline int16_t adaptive_decompress(uint16_t comp_val, int bits) {
+    const uint32_t max_val = (1u << bits) - 1;
+    
+    // 保持与压缩相同的比例
+    const uint32_t low_range = (max_val * 3) / 10;
+    const uint32_t mid_range = (max_val * 5) / 10;
+    const uint32_t high_range = max_val - low_range - mid_range;
+    
+    int32_t value;
+    
+    if (comp_val < low_range) { // 低值区
+        value = (comp_val * LOW_THRESH + low_range/2) / low_range;
+    } 
+    else if (comp_val < low_range + mid_range) { // 中值区
+        value = LOW_THRESH + 
+               ((comp_val - low_range) * (MID_THRESH - LOW_THRESH) + mid_range/2) / 
+               mid_range;
+    } 
+    else { // 高值区
+        value = MID_THRESH + 
+               ((comp_val - low_range - mid_range) * (PARAM_Q - MID_THRESH) + 
+               high_range/2) / high_range;
+    }
+    
+    // 转换回有符号数
+    return (value >= PARAM_Q) ? (int16_t)(PARAM_Q - 1) : (int16_t)value;
+}
+
+// ================== 压缩函数实现 ================== //
+
+#if BITS_C1 == 9 || BITS_PK == 9
+static void polyvec_compress9(uint8_t *r, const polyvec *a) {
+    // uint16_t cpbytes = (PARAM_N * 9 + 7) / 8;
+    for (int i = 0; i < PARAM_K; i++) {
+        for (int j = 0; j < PARAM_N / 8; j++) {
+            uint16_t t[8];
+            
+            // 应用自适应压缩
+            for (int k = 0; k < 8; k++) {
+                t[k] = adaptive_compress(a->vec[i].coeffs[8*j + k], 9);
+            }
+            
+            // 高效位打包
+            r[0] =  t[0]        & 0xFF;
+            r[1] = (t[0] >>  8) | ((t[1] & 0x7F) << 1);
+            r[2] = (t[1] >>  7) | ((t[2] & 0x3F) << 2);
+            r[3] = (t[2] >>  6) | ((t[3] & 0x1F) << 3);
+            r[4] = (t[3] >>  5) | ((t[4] & 0x0F) << 4);
+            r[5] = (t[4] >>  4) | ((t[5] & 0x07) << 5);
+            r[6] = (t[5] >>  3) | ((t[6] & 0x03) << 6);
+            r[7] = (t[6] >>  2) | ((t[7] & 0x01) << 7);
+            r[8] = (t[7] >>  1);
+            r += 9;
+        }
+    }
 }
 #endif
 
 #if BITS_C1 == 10 || BITS_PK == 10
-static void polyvec_compress10(uint8_t *r, const polyvec *a)
-{
-	int i, j, k;
-	uint16_t t[4];
-	uint16_t cpbytes = ((PARAM_N * 10) >> 3);//the bytes for storing a polynomial in compressed form
-	for (i = 0; i<PARAM_K; i++)
-	{
-		for (j = 0; j<PARAM_N / 4; j++)
-		{
-			for (k = 0; k<4; k++) {
-				t[k] = ((((uint32_t)a->vec[i].coeffs[4 * j + k] << 10) + PARAM_Q / 2) / PARAM_Q) & 0x3ff;
-			}
-			r[5 * j + 0] = t[0] & 0xff;
-			r[5 * j + 1] = (t[0] >> 8) | ((t[1] & 0x3f) << 2);
-			r[5 * j + 2] = (t[1] >> 6) | ((t[2] & 0x0f) << 4);
-			r[5 * j + 3] = (t[2] >> 4) | ((t[3] & 0x03) << 6);
-			r[5 * j + 4] = (t[3] >> 2);
-		}
-		r += cpbytes;
-	}
+static void polyvec_compress10(uint8_t *r, const polyvec *a) {
+    // uint16_t cpbytes = (PARAM_N * 10 + 7) / 8;
+    for (int i = 0; i < PARAM_K; i++) {
+        for (int j = 0; j < PARAM_N / 4; j++) {
+            uint16_t t[4];
+            
+            // 应用自适应压缩
+            for (int k = 0; k < 4; k++) {
+                t[k] = adaptive_compress(a->vec[i].coeffs[4*j + k], 10);
+            }
+            
+            // 高效位打包
+            r[0] =  t[0]        & 0xFF;
+            r[1] = (t[0] >>  8) | ((t[1] & 0x3F) << 2);
+            r[2] = (t[1] >>  6) | ((t[2] & 0x0F) << 4);
+            r[3] = (t[2] >>  4) | ((t[3] & 0x03) << 6);
+            r[4] = (t[3] >>  2);
+            r += 5;
+        }
+    }
 }
 #endif
 
 #if BITS_C1 == 11 || BITS_PK == 11
-static void polyvec_compress11(uint8_t *r, const polyvec *a)
-{
-	int i, j, k;
-	uint16_t t[8];
-	uint16_t cpbytes = ((PARAM_N * 11) >> 3);//the bytes for storing a polynomial in compressed form
-	for (i = 0; i < PARAM_K; i++)
-	{
-		for (j = 0; j < PARAM_N / 8; j++)
-		{
-			for (k = 0; k < 8; k++)
-				t[k] = ((((uint32_t)a->vec[i].coeffs[8 * j + k] << 11) + PARAM_Q / 2) / PARAM_Q) & 0x7ff;
-
-			r[11 * j + 0] = t[0] & 0xff;
-			r[11 * j + 1] = (t[0] >> 8) | ((t[1] & 0x1f) << 3);
-			r[11 * j + 2] = (t[1] >> 5) | ((t[2] & 0x03) << 6);
-			r[11 * j + 3] = (t[2] >> 2) & 0xff;
-			r[11 * j + 4] = (t[2] >> 10) | ((t[3] & 0x7f) << 1);
-			r[11 * j + 5] = (t[3] >> 7) | ((t[4] & 0x0f) << 4);
-			r[11 * j + 6] = (t[4] >> 4) | ((t[5] & 0x01) << 7);
-			r[11 * j + 7] = (t[5] >> 1) & 0xff;
-			r[11 * j + 8] = (t[5] >> 9) | ((t[6] & 0x3f) << 2);
-			r[11 * j + 9] = (t[6] >> 6) | ((t[7] & 0x07) << 5);
-			r[11 * j + 10] = (t[7] >> 3);
-		}
-		r += cpbytes;
-	}
+static void polyvec_compress11(uint8_t *r, const polyvec *a) {
+    // uint16_t cpbytes = (PARAM_N * 11 + 7) / 8;
+    for (int i = 0; i < PARAM_K; i++) {
+        for (int j = 0; j < PARAM_N / 8; j++) {
+            uint16_t t[8];
+            
+            // 应用自适应压缩
+            for (int k = 0; k < 8; k++) {
+                t[k] = adaptive_compress(a->vec[i].coeffs[8*j + k], 11);
+            }
+            
+            // 高效位打包
+            r[0]  =  t[0]        & 0xFF;
+            r[1]  = (t[0] >>  8) | ((t[1] & 0x1F) << 3);
+            r[2]  = (t[1] >>  5) | ((t[2] & 0x03) << 6);
+            r[3]  = (t[2] >>  2) & 0xFF;
+            r[4]  = (t[2] >> 10) | ((t[3] & 0x7F) << 1);
+            r[5]  = (t[3] >>  7) | ((t[4] & 0x0F) << 4);
+            r[6]  = (t[4] >>  4) | ((t[5] & 0x01) << 7);
+            r[7]  = (t[5] >>  1) & 0xFF;
+            r[8]  = (t[5] >>  9) | ((t[6] & 0x3F) << 2);
+            r[9]  = (t[6] >>  6) | ((t[7] & 0x07) << 5);
+            r[10] = (t[7] >>  3);
+            r += 11;
+        }
+    }
 }
 #endif
 
+// ================== 解压缩函数实现 ================== //
+
 #if BITS_C1 == 9 || BITS_PK == 9
-static void polyvec_decompress9(polyvec *r, const unsigned char *a)
-{
-	int i, j;
-	uint16_t cpbytes = ((PARAM_N * 9) >> 3);//the bytes for storing a polynomial in compressed form
-	for (i = 0; i < PARAM_K; i++)
-	{
-		for (j = 0; j < PARAM_N / 8; j++)
-		{
-			r->vec[i].coeffs[8 * j + 0] = (((a[9 * j + 0] | (((uint32_t)a[9 * j + 1] & 0x01) << 8)) * PARAM_Q) + 256) >> 9;
-			r->vec[i].coeffs[8 * j + 1] = ((((a[9 * j + 1] >> 1) | (((uint32_t)a[9 * j + 2] & 0x03) << 7)) * PARAM_Q) + 256) >> 9;
-			r->vec[i].coeffs[8 * j + 2] = ((((a[9 * j + 2] >> 2) | (((uint32_t)a[9 * j + 3] & 0x07) << 6)) * PARAM_Q) + 256) >> 9;
-			r->vec[i].coeffs[8 * j + 3] = ((((a[9 * j + 3] >> 3) | (((uint32_t)a[9 * j + 4] & 0x0f) << 5)) * PARAM_Q) + 256) >> 9;
-			r->vec[i].coeffs[8 * j + 4] = ((((a[9 * j + 4] >> 4) | (((uint32_t)a[9 * j + 5] & 0x1f) << 4)) * PARAM_Q) + 256) >> 9;
-			r->vec[i].coeffs[8 * j + 5] = ((((a[9 * j + 5] >> 5) | (((uint32_t)a[9 * j + 6] & 0x3f) << 3)) * PARAM_Q) + 256) >> 9;
-			r->vec[i].coeffs[8 * j + 6] = ((((a[9 * j + 6] >> 6) | (((uint32_t)a[9 * j + 7] & 0x7f) << 2)) * PARAM_Q) + 256) >> 9;
-			r->vec[i].coeffs[8 * j + 7] = ((((a[9 * j + 7] >> 7) | (((uint32_t)a[9 * j + 8]) << 1)) * PARAM_Q) + 256) >> 9;
-		}
-		a += cpbytes;
-	}
+static void polyvec_decompress9(polyvec *r, const unsigned char *a) {
+    // uint16_t cpbytes = (PARAM_N * 9 + 7) / 8;
+    for (int i = 0; i < PARAM_K; i++) {
+        for (int j = 0; j < PARAM_N / 8; j++) {
+            uint16_t t[8];
+            
+            // 解包位压缩数据
+            t[0] = a[0] | ((uint16_t)(a[1] & 0x01) << 8);
+            t[1] = (a[1] >> 1) | ((uint16_t)(a[2] & 0x03) << 7);
+            t[2] = (a[2] >> 2) | ((uint16_t)(a[3] & 0x07) << 6);
+            t[3] = (a[3] >> 3) | ((uint16_t)(a[4] & 0x0F) << 5);
+            t[4] = (a[4] >> 4) | ((uint16_t)(a[5] & 0x1F) << 4);
+            t[5] = (a[5] >> 5) | ((uint16_t)(a[6] & 0x3F) << 3);
+            t[6] = (a[6] >> 6) | ((uint16_t)(a[7] & 0x7F) << 2);
+            t[7] = (a[7] >> 7) | ((uint16_t)(a[8]) << 1);
+            a += 9;
+            
+            // 应用自适应解压缩
+            for (int k = 0; k < 8; k++) {
+                r->vec[i].coeffs[8*j + k] = adaptive_decompress(t[k], 9);
+            }
+        }
+    }
 }
 #endif
 
 #if BITS_C1 == 10 || BITS_PK == 10
-static void polyvec_decompress10(polyvec *r, const unsigned char *a)
-{
-	int i, j;
-	uint16_t cpbytes = ((PARAM_N * 10) >> 3);//the bytes for storing a polynomial in compressed form
-	for (i = 0; i < PARAM_K; i++)
-	{
-		for (j = 0; j < PARAM_N / 4; j++)
-		{
-			r->vec[i].coeffs[4 * j + 0] = (((a[5 * j + 0] | (((uint32_t)a[5 * j + 1] & 0x03) << 8)) * PARAM_Q) + 512) >> 10;
-			r->vec[i].coeffs[4 * j + 1] = ((((a[5 * j + 1] >> 2) | (((uint32_t)a[5 * j + 2] & 0x0f) << 6)) * PARAM_Q) + 512) >> 10;
-			r->vec[i].coeffs[4 * j + 2] = ((((a[5 * j + 2] >> 4) | (((uint32_t)a[5 * j + 3] & 0x3f) << 4)) * PARAM_Q) + 512) >> 10;
-			r->vec[i].coeffs[4 * j + 3] = ((((a[5 * j + 3] >> 6) | (((uint32_t)a[5 * j + 4]) << 2)) * PARAM_Q) + 512) >> 10;
-		}
-		a += cpbytes;
-	}
+static void polyvec_decompress10(polyvec *r, const unsigned char *a) {
+    // uint16_t cpbytes = (PARAM_N * 10 + 7) / 8;
+    for (int i = 0; i < PARAM_K; i++) {
+        for (int j = 0; j < PARAM_N / 4; j++) {
+            uint16_t t[4];
+            
+            // 解包位压缩数据
+            t[0] = a[0] | ((uint16_t)(a[1] & 0x03) << 8);
+            t[1] = (a[1] >> 2) | ((uint16_t)(a[2] & 0x0F) << 6);
+            t[2] = (a[2] >> 4) | ((uint16_t)(a[3] & 0x3F) << 4);
+            t[3] = (a[3] >> 6) | ((uint16_t)a[4] << 2);
+            a += 5;
+            
+            // 应用自适应解压缩
+            for (int k = 0; k < 4; k++) {
+                r->vec[i].coeffs[4*j + k] = adaptive_decompress(t[k], 10);
+            }
+        }
+    }
 }
 #endif
 
 #if BITS_C1 == 11 || BITS_PK == 11
-static void polyvec_decompress11(polyvec *r, const unsigned char *a)
-{
-	int i, j;
-	uint16_t cpbytes = ((PARAM_N * 11) >> 3);//the bytes for storing a polynomial in compressed form
-	for (i = 0; i < PARAM_K; i++)
-	{
-		for (j = 0; j < PARAM_N / 8; j++)
-		{
-			r->vec[i].coeffs[8 * j + 0] = (((a[11 * j + 0] | (((uint32_t)a[11 * j + 1] & 0x07) << 8)) * PARAM_Q) + 1024) >> 11;
-			r->vec[i].coeffs[8 * j + 1] = ((((a[11 * j + 1] >> 3) | (((uint32_t)a[11 * j + 2] & 0x3f) << 5)) * PARAM_Q) + 1024) >> 11;
-			r->vec[i].coeffs[8 * j + 2] = ((((a[11 * j + 2] >> 6) | (((uint32_t)a[11 * j + 3] & 0xff) << 2) | (((uint32_t)a[11 * j + 4] & 0x01) << 10)) * PARAM_Q) + 1024) >> 11;
-			r->vec[i].coeffs[8 * j + 3] = ((((a[11 * j + 4] >> 1) | (((uint32_t)a[11 * j + 5] & 0x0f) << 7)) * PARAM_Q) + 1024) >> 11;
-			r->vec[i].coeffs[8 * j + 4] = ((((a[11 * j + 5] >> 4) | (((uint32_t)a[11 * j + 6] & 0x7f) << 4)) * PARAM_Q) + 1024) >> 11;
-			r->vec[i].coeffs[8 * j + 5] = ((((a[11 * j + 6] >> 7) | (((uint32_t)a[11 * j + 7] & 0xff) << 1) | (((uint32_t)a[11 * j + 8] & 0x03) << 9)) * PARAM_Q) + 1024) >> 11;
-			r->vec[i].coeffs[8 * j + 6] = ((((a[11 * j + 8] >> 2) | (((uint32_t)a[11 * j + 9] & 0x1f) << 6)) * PARAM_Q) + 1024) >> 11;
-			r->vec[i].coeffs[8 * j + 7] = ((((a[11 * j + 9] >> 5) | (((uint32_t)a[11 * j + 10] & 0xff) << 3)) * PARAM_Q) + 1024) >> 11;
-		}
-		a += cpbytes;
-	}
+static void polyvec_decompress11(polyvec *r, const unsigned char *a) {
+    // uint16_t cpbytes = (PARAM_N * 11 + 7) / 8;
+    for (int i = 0; i < PARAM_K; i++) {
+        for (int j = 0; j < PARAM_N / 8; j++) {
+            uint16_t t[8];
+            
+            // 解包位压缩数据
+            t[0] = a[0] | ((uint16_t)(a[1] & 0x07) << 8);
+            t[1] = (a[1] >> 3) | ((uint16_t)(a[2] & 0x3F) << 5);
+            t[2] = (a[2] >> 6) | ((uint16_t)a[3] << 2) | ((uint16_t)(a[4] & 0x01) << 10);
+            t[3] = (a[4] >> 1) | ((uint16_t)(a[5] & 0x0F) << 7);
+            t[4] = (a[5] >> 4) | ((uint16_t)(a[6] & 0x7F) << 4);
+            t[5] = (a[6] >> 7) | ((uint16_t)a[7] << 1) | ((uint16_t)(a[8] & 0x03) << 9);
+            t[6] = (a[8] >> 2) | ((uint16_t)(a[9] & 0x1F) << 6);
+            t[7] = (a[9] >> 5) | ((uint16_t)a[10] << 3);
+            a += 11;
+            
+            // 应用自适应解压缩
+            for (int k = 0; k < 8; k++) {
+                r->vec[i].coeffs[8*j + k] = adaptive_decompress(t[k], 11);
+            }
+        }
+    }
 }
 #endif
+
 
 void polyvec_ct_compress(uint8_t *r, const polyvec *a)
 {

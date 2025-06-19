@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "fips202.h": "c",
-        "ascon_hash.h": "c"
+        "ascon_hash.h": "c",
+        "compare": "c",
+        "cstdint": "c"
     }
 }
