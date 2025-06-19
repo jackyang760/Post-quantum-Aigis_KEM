@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "fips202.h": "c",
+        "ascon_hash.h": "c"
+    }
+}

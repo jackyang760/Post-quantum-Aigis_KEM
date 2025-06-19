@@ -9,9 +9,9 @@ INCLUDE_PATH=-I$(PROJECT_HOME) -I$(PROJECT_HOME)/include -I$(PROJECT_HOME)/utils
 
 CFLAGS += $(INCLUDE_PATH)
 
-SOURCES= cbd.c owcpa.c genmatrix.c kem.c ntt.c poly.c polyvec.c reduce.c verify.c hashkdf.c \
+SOURCES= cbd.c owcpa.c genmatrix.c kem.c ntt.c poly.c polyvec.c reduce.c verify.c hashkdf.c ascon_hash.c\
 		 $(PROJECT_HOME)/utils/randombytes.c
-HEADERS= api.h cbd.h owcpa.h genmatrix.h ntt.h params.h poly.h polyvec.h reduce.h verify.h hashkdf.h \
+HEADERS= api.h cbd.h owcpa.h genmatrix.h ntt.h params.h poly.h polyvec.h reduce.h verify.h hashkdf.h ascon_hash.h ascon.h constants.h permutations.h round.h word.h\
 		 $(PROJECT_HOME)/utils/randombytes.h
 
 UTILS_SOURCES = $(PROJECT_HOME)/utils/speed_print.c $(PROJECT_HOME)/utils/cpucycles.c
@@ -26,8 +26,8 @@ ifeq ($(USE_SHAKE), 1)
 	HASH_SOURCE += $(FIPS202_HOME)/fips202.c
 	CFLAGS += -march=native -DUSE_SHAKE
 	CFLAGS += -I$(FIPS202_HOME)
-else
 
+else ifeq ($(USE_SM3), 1)
 	ifeq ($(TARGET_HYGON), 1)
 		CFLAGS += -mavx2
 	else
@@ -38,6 +38,7 @@ else
 
 	HASH_HEADER += sm3kdf.h $(PROJECT_HOME)/include/sm3_extended.h
 	HASH_SOURCE += sm3kdf.c $(SM3_HOME)/sm3_extended.c
+else
 
 endif
 
