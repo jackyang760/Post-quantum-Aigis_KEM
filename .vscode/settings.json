@@ -3,6 +3,11 @@
         "fips202.h": "c",
         "ascon_hash.h": "c",
         "compare": "c",
-        "cstdint": "c"
+        "cstdint": "c",
+        "ctype.h": "c",
+        "stdio.h": "c",
+        "api.h": "c",
+        "optional": "c",
+        "format": "c"
     }
 }

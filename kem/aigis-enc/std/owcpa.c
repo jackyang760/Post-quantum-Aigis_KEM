@@ -63,7 +63,13 @@ void owcpa_keypair(
   
   memcpy(buf, coins, SEED_BYTES);
 
-  Hash2(buf,buf, SEED_BYTES);
+#ifdef USE_SHAKE
+	Hash2(buf,buf, SEED_BYTES); 
+#elif defined USE_SM3
+	Hash2(buf,buf, SEED_BYTES); 
+#else
+	Hash2P12(buf,buf, SEED_BYTES);
+#endif
   gen_a(a, publicseed);
  
   polyvec_ss_getnoise(&skpv,noiseseed,nonce);
@@ -71,7 +77,7 @@ void owcpa_keypair(
 
   polyvec_ntt(&skpv);
 
-  polyvec_ee_getnoise(&e,noiseseed,nonce);
+  polyvec_ss_getnoise(&e,noiseseed,nonce);
   nonce += PARAM_K;
 
 

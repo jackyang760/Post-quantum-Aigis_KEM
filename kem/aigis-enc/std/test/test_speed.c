@@ -45,6 +45,14 @@ void core_alg_cycle_bench(void) {
   }
   print_results("Aigis-enc decaps: ", t, NTESTS);
 
+  for(i=0;i<NTESTS;i++) {
+    t[i] = cpucycles();
+    crypto_kem_keypair(pk, sk);
+    crypto_kem_enc(ct, key, pk);
+    crypto_kem_dec(key, ct, sk);
+  }
+  print_results("Total-Cycles: ", t, NTESTS);
+
   printf("=============================== Finish ============================\n\n");
 }
 

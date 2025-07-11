@@ -29,12 +29,12 @@
 #define QBITS 13
 #define REJ_UNIFORM_BYTES 480 //fail with prob. less than 2^-18
 #define PARAM_K 3
-#define ETA_S 1
+#define ETA_S 3
 #define ETA_E 4
 #define POLY_BYTES 416
-#define BITS_PK 9
-#define BITS_C1 9
-#define BITS_C2 4
+#define BITS_PK 10
+#define BITS_C1 10
+#define BITS_C2 3
 #define SEED_BYTES 32
 
 #elif (PARAMS == 3) 
@@ -46,12 +46,12 @@
 #define QBITS 13
 #define REJ_UNIFORM_BYTES 480 //fail with prob. less than 2^-18
 #define PARAM_K 3
-#define ETA_S 2
+#define ETA_S 4
 #define ETA_E 4
 #define POLY_BYTES 416
-#define BITS_PK 10
-#define BITS_C1 10
-#define BITS_C2 3
+#define BITS_PK 9
+#define BITS_C1 9
+#define BITS_C2 4
 #define SEED_BYTES 32
 
 #elif (PARAMS == 4)  

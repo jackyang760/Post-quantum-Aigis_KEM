@@ -13,6 +13,7 @@ SOURCES= cbd.c owcpa.c genmatrix.c kem.c ntt.c poly.c polyvec.c reduce.c verify.
 		 $(PROJECT_HOME)/utils/randombytes.c
 HEADERS= api.h cbd.h owcpa.h genmatrix.h ntt.h params.h poly.h polyvec.h reduce.h verify.h hashkdf.h ascon_hash.h ascon.h constants.h permutations.h round.h word.h\
 		 $(PROJECT_HOME)/utils/randombytes.h
+LDFLAGS = -lssl -lcrypto
 
 UTILS_SOURCES = $(PROJECT_HOME)/utils/speed_print.c $(PROJECT_HOME)/utils/cpucycles.c
 UTILS_HEADERS = $(PROJECT_HOME)/utils/speed_print.h $(PROJECT_HOME)/utils/cpucycles.h
@@ -60,7 +61,11 @@ test: \
 	test/test_aigis_enc_1 \
 	test/test_aigis_enc_2 \
 	test/test_aigis_enc_3 \
-	test/test_aigis_enc_4
+	test/test_aigis_enc_4 \
+	test/test_aigis_enc_1_once \
+	test/test_aigis_enc_2_once \
+	test/test_aigis_enc_3_once \
+	test/test_aigis_enc_4_once
 
 test_vec: \
   test/test_vec_aigis_enc_1 \
@@ -101,6 +106,22 @@ test/test_aigis_enc_3: test/test_aigis_enc.c $(HEADERS) $(SOURCES)
 test/test_aigis_enc_4: test/test_aigis_enc.c $(HEADERS) $(SOURCES)
 	$(CC) $(CFLAGS) -DAIGIS_ENC_MODE=4 \
 	-o $@ test/test_aigis_enc.c $(SOURCES) $(LDFLAGS)
+
+test/test_aigis_enc_1_once: test/test_aigis_enc_once.c $(HEADERS) $(SOURCES)
+	$(CC) $(CFLAGS) -DAIGIS_ENC_MODE=1 \
+	-o $@ test/test_aigis_enc_once.c $(SOURCES) $(LDFLAGS)
+
+test/test_aigis_enc_2_once: test/test_aigis_enc_once.c $(HEADERS) $(SOURCES)
+	$(CC) $(CFLAGS) -DAIGIS_ENC_MODE=2 \
+	-o $@ test/test_aigis_enc_once.c $(SOURCES) $(LDFLAGS)
+
+test/test_aigis_enc_3_once: test/test_aigis_enc_once.c $(HEADERS) $(SOURCES)
+	$(CC) $(CFLAGS) -DAIGIS_ENC_MODE=3 \
+	-o $@ test/test_aigis_enc_once.c $(SOURCES) $(LDFLAGS)
+
+test/test_aigis_enc_4_once: test/test_aigis_enc_once.c $(HEADERS) $(SOURCES)
+	$(CC) $(CFLAGS) -DAIGIS_ENC_MODE=4 \
+	-o $@ test/test_aigis_enc_once.c $(SOURCES) $(LDFLAGS)
 
 test/test_vec_aigis_enc_1: test/test_vec_aigis_enc.c $(HEADERS) $(SOURCES)
 	$(CC) $(CFLAGS) -DAIGIS_ENC_MODE=1 \
@@ -148,6 +169,10 @@ clean:
 	rm -f test/test_aigis_enc_2
 	rm -f test/test_aigis_enc_3
 	rm -f test/test_aigis_enc_4
+	rm -f test/test_aigis_enc_1_once
+	rm -f test/test_aigis_enc_2_once
+	rm -f test/test_aigis_enc_3_once
+	rm -f test/test_aigis_enc_4_once
 	rm -f test/test_speed_1
 	rm -f test/test_speed_2
 	rm -f test/test_speed_3

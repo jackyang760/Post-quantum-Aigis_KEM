@@ -34,6 +34,11 @@ void hash256(uint8_t *out, const uint8_t *in, int inlen)
 #endif
 }
 
+void hash256_P12(uint8_t *out, const uint8_t *in, int inlen)
+{
+	ascon_hash_32_P12(out, in, inlen);
+}
+
 void hash512(uint8_t *out, const uint8_t *in, int inlen)
 {
 #ifdef USE_SHAKE
@@ -43,6 +48,11 @@ void hash512(uint8_t *out, const uint8_t *in, int inlen)
 #else
 	ascon_hash_64(out, in, inlen);
 #endif
+}
+
+void hash512_P12(uint8_t *out, const uint8_t *in, int inlen)
+{
+	ascon_hash_64_P12(out, in, inlen);
 }
 
 void hash1024(uint8_t *out, const uint8_t *in, int inlen)
@@ -55,6 +65,12 @@ void hash1024(uint8_t *out, const uint8_t *in, int inlen)
 	ascon_hash_128(out, in, inlen);
 #endif
 }
+
+void hash1024_P12(uint8_t *out, const uint8_t *in, int inlen)
+{
+	ascon_hash_128_P12(out, in, inlen);
+}
+
 #ifdef USE_SHAKE
 void kdf128_absorb(kdfstate * state, const uint8_t *input, int inlen)
 {

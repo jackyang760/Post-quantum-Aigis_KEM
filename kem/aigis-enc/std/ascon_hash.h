@@ -18,10 +18,18 @@
 
 #define ascon_hash_32 FIPS202_NAMESPACE(ascon_hash_32)
 void ascon_hash_32 (uint8_t *out, const uint8_t *in, size_t len);
+#define ascon_hash_32_P12 FIPS202_NAMESPACE(ascon_hash_32_P12)
+void ascon_hash_32_P12 (uint8_t *out, const uint8_t *in, size_t len);
+
 #define ascon_hash_64 FIPS202_NAMESPACE(ascon_hash_64)
 void ascon_hash_64(uint8_t *out, const uint8_t *in, size_t len);
+#define ascon_hash_64_P12 FIPS202_NAMESPACE(ascon_hash_64_P12)
+void ascon_hash_64_P12(uint8_t *out, const uint8_t *in, size_t len);
+
 #define ascon_hash_128 FIPS202_NAMESPACE(ascon_hash_128)
 void ascon_hash_128(uint8_t *out, const uint8_t *in, size_t len);
+#define ascon_hash_128_P12 FIPS202_NAMESPACE(ascon_hash_128_P12)
+void ascon_hash_128_P12(uint8_t *out, const uint8_t *in, size_t len);
 
 #define ascon_xof FIPS202_NAMESPACE(ascon_xof)
 void ascon_xof(uint8_t *out,size_t outlen, const uint8_t *in, size_t len);

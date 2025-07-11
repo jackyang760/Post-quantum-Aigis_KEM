@@ -17,7 +17,7 @@ PQMAGIC_EXPORT int crypto_kem_keypair_internal(
   owcpa_keypair(pk, sk, coins);
   for(i=0;i<PK_BYTES;i++)
     sk[POLYVEC_BYTES + i] = pk[i];
-  Hash(sk+SK_BYTES-2*SEED_BYTES,pk,PK_BYTES); 
+	Hash(sk+SK_BYTES-2*SEED_BYTES,pk,PK_BYTES); 
   memcpy(sk + SK_BYTES - SEED_BYTES, coins+SEED_BYTES, SEED_BYTES);/* Value z for implicit reject */
   return 0;
 }
